@@ -1,0 +1,778 @@
+{
+    "info": {
+      "_postman_id": "4322e06d-faad-43af-a51f-f8e008ba5e15",
+      "name": "BarrHopp API",
+      "description": "Auth & users API for BarrHopp (Spring Boot 3.3, JWT).\n\n**Quick start**\n1. Start the API (`mvn spring-boot:run`, default http://localhost:8080).\n2. Run folder **1. Happy path** in order (Register -> Login -> Me). The token is saved to `{{accessToken}}` automatically.\n3. Run the other folders for negative-case coverage. Or use **Run collection** to execute everything.\n\nVariables live on the collection (Variables tab). Change `baseUrl` to target another environment.",
+      "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "auth": {
+      "type": "bearer",
+      "bearer": [
+        {
+          "key": "token",
+          "value": "{{accessToken}}",
+          "type": "string"
+        }
+      ]
+    },
+    "variable": [
+      {
+        "key": "baseUrl",
+        "value": "http://localhost:8080",
+        "type": "string"
+      },
+      {
+        "key": "testEmail",
+        "value": "",
+        "type": "string"
+      },
+      {
+        "key": "testPassword",
+        "value": "correct-horse-battery",
+        "type": "string"
+      },
+      {
+        "key": "rotateEmail",
+        "value": "true",
+        "type": "string"
+      },
+      {
+        "key": "accessToken",
+        "value": "",
+        "type": "string"
+      },
+      {
+        "key": "userId",
+        "value": "",
+        "type": "string"
+      },
+      {
+        "key": "userEmail",
+        "value": "",
+        "type": "string"
+      },
+      {
+        "key": "_wrongPwBody",
+        "value": "",
+        "type": "string"
+      }
+    ],
+    "item": [
+      {
+        "name": "1. Happy path (run in order)",
+        "description": "Registers a fresh user (unique email per run), then exercises login and the protected /me endpoint. The token is stored automatically in the {{accessToken}} collection variable.",
+        "item": [
+          {
+            "name": "Register",
+            "request": {
+              "method": "POST",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "url": {
+                "raw": "{{baseUrl}}/api/v1/auth/register",
+                "host": [
+                  "{{baseUrl}}"
+                ],
+                "path": [
+                  "api",
+                  "v1",
+                  "auth",
+                  "register"
+                ]
+              },
+              "body": {
+                "mode": "raw",
+                "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\",\n  \"displayName\": \"Postman Tester\"\n}",
+                "options": {
+                  "raw": {
+                    "language": "json"
+                  }
+                }
+              },
+              "auth": {
+                "type": "noauth"
+              },
+              "description": "Creates an account. Email is trimmed and lowercased server-side. Password must be 8-72 chars."
+            },
+            "response": [],
+            "event": [
+              {
+                "listen": "prerequest",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "// Unique email each run so the collection is re-runnable against a persistent DB.",
+                    "if (!pm.collectionVariables.get('testEmail') || pm.collectionVariables.get('rotateEmail') === 'true') {",
+                    "  pm.collectionVariables.set('testEmail', `tester+${Date.now()}@example.com`);",
+                    "}"
+                  ]
+                }
+              },
+              {
+                "listen": "test",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                    "const json = pm.response.json();",
+                    "pm.test('returns a Bearer token', () => {",
+                    "  pm.expect(json.accessToken).to.be.a('string').and.not.empty;",
+                    "  pm.expect(json.tokenType).to.eql('Bearer');",
+                    "  pm.expect(json.expiresInSeconds).to.be.above(0);",
+                    "});",
+                    "pm.test('email is normalized to lowercase', () => pm.expect(json.user.email).to.eql(json.user.email.toLowerCase()));",
+                    "pm.test('new users get role USER', () => pm.expect(json.user.role).to.eql('USER'));",
+                    "pm.test('password hash is never exposed', () => {",
+                    "  const body = pm.response.text().toLowerCase();",
+                    "  pm.expect(body).to.not.include('password');",
+                    "});",
+                    "{ // own block scope: must not collide with `json` declared by the caller's tests",
+                    "  const auth = pm.response.json();",
+                    "  pm.collectionVariables.set('accessToken', auth.accessToken);",
+                    "  pm.collectionVariables.set('userId', auth.user.id);",
+                    "  pm.collectionVariables.set('userEmail', auth.user.email);",
+                    "}"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "Login",
+            "request": {
+              "method": "POST",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "url": {
+                "raw": "{{baseUrl}}/api/v1/auth/login",
+                "host": [
+                  "{{baseUrl}}"
+                ],
+                "path": [
+                  "api",
+                  "v1",
+                  "auth",
+                  "login"
+                ]
+              },
+              "body": {
+                "mode": "raw",
+                "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\"\n}",
+                "options": {
+                  "raw": {
+                    "language": "json"
+                  }
+                }
+              },
+              "auth": {
+                "type": "noauth"
+              },
+              "description": "Exchanges credentials for a fresh access token (overwrites {{accessToken}})."
+            },
+            "response": [],
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                    "const json = pm.response.json();",
+                    "pm.test('returns a Bearer token', () => pm.expect(json.accessToken).to.be.a('string').and.not.empty);",
+                    "pm.test('same user as registered', () => pm.expect(json.user.id).to.eql(pm.collectionVariables.get('userId')));",
+                    "{ // own block scope: must not collide with `json` declared by the caller's tests",
+                    "  const auth = pm.response.json();",
+                    "  pm.collectionVariables.set('accessToken', auth.accessToken);",
+                    "  pm.collectionVariables.set('userId', auth.user.id);",
+                    "  pm.collectionVariables.set('userEmail', auth.user.email);",
+                    "}"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "Me (with token)",
+            "request": {
+              "method": "GET",
+              "header": [],
+              "url": {
+                "raw": "{{baseUrl}}/api/v1/auth/me",
+                "host": [
+                  "{{baseUrl}}"
+                ],
+                "path": [
+                  "api",
+                  "v1",
+                  "auth",
+                  "me"
+                ]
+              },
+              "auth": {
+                "type": "bearer",
+                "bearer": [
+                  {
+                    "key": "token",
+                    "value": "{{accessToken}}",
+                    "type": "string"
+                  }
+                ]
+              },
+              "description": "Uses the stored {{accessToken}}. Requires the Register or Login request to have run first."
+            },
+            "response": [],
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                    "const json = pm.response.json();",
+                    "pm.test('identifies the caller', () => pm.expect(json.email).to.eql(pm.collectionVariables.get('testEmail')));",
+                    "pm.test('shape has no secrets', () => {",
+                    "  pm.expect(json).to.have.all.keys('id', 'email', 'displayName', 'role', 'createdAt');",
+                    "});"
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "2. Auth failure cases",
+        "description": "Negative tests. Each asserts the API rejects the request the right way.",
+        "item": [
+          {
+            "name": "Me (no token) -> 401",
+            "request": {
+              "method": "GET",
+              "header": [],
+              "url": {
+                "raw": "{{baseUrl}}/api/v1/auth/me",
+                "host": [
+                  "{{baseUrl}}"
+                ],
+                "path": [
+                  "api",
+                  "v1",
+                  "auth",
+                  "me"
+                ]
+              },
+              "auth": {
+                "type": "noauth"
+              }
+            },
+            "response": [],
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));",
+                    "pm.test('JSON problem body', () => {",
+                    "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                    "  pm.expect(pm.response.json().detail).to.eql('Authentication required');",
+                    "});"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "Me (garbage token) -> 401",
+            "request": {
+              "method": "GET",
+              "header": [],
+              "url": {
+                "raw": "{{baseUrl}}/api/v1/auth/me",
+                "host": [
+                  "{{baseUrl}}"
+                ],
+                "path": [
+                  "api",
+                  "v1",
+                  "auth",
+                  "me"
+                ]
+              },
+              "auth": {
+                "type": "bearer",
+                "bearer": [
+                  {
+                    "key": "token",
+                    "value": "not.a.jwt",
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            "response": [],
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "Login (wrong password) -> 401",
+            "request": {
+              "method": "POST",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "url": {
+                "raw": "{{baseUrl}}/api/v1/auth/login",
+                "host": [
+                  "{{baseUrl}}"
+                ],
+                "path": [
+                  "api",
+                  "v1",
+                  "auth",
+                  "login"
+                ]
+              },
+              "body": {
+                "mode": "raw",
+                "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"definitely-wrong-password\"\n}",
+                "options": {
+                  "raw": {
+                    "language": "json"
+                  }
+                }
+              },
+              "auth": {
+                "type": "noauth"
+              }
+            },
+            "response": [],
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));",
+                    "pm.collectionVariables.set('_wrongPwBody', pm.response.text());",
+                    "pm.test('generic message', () => pm.expect(pm.response.json().detail).to.eql('Invalid email or password'));"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "Login (unknown email) -> 401 (identical body)",
+            "request": {
+              "method": "POST",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "url": {
+                "raw": "{{baseUrl}}/api/v1/auth/login",
+                "host": [
+                  "{{baseUrl}}"
+                ],
+                "path": [
+                  "api",
+                  "v1",
+                  "auth",
+                  "login"
+                ]
+              },
+              "body": {
+                "mode": "raw",
+                "raw": "{\n  \"email\": \"nobody-{{$timestamp}}@example.com\",\n  \"password\": \"whatever-password\"\n}",
+                "options": {
+                  "raw": {
+                    "language": "json"
+                  }
+                }
+              },
+              "auth": {
+                "type": "noauth"
+              },
+              "description": "Run AFTER 'Login (wrong password)'. Compares bodies to prove the endpoint cannot be used to discover which emails are registered."
+            },
+            "response": [],
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));",
+                    "pm.test('identical to wrong-password response (no email enumeration)', () => {",
+                    "  pm.expect(pm.response.text()).to.eql(pm.collectionVariables.get('_wrongPwBody'));",
+                    "});"
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "3. Validation & conflicts",
+        "description": "Register-request validation and duplicate handling.",
+        "item": [
+          {
+            "name": "Register (invalid fields) -> 400",
+            "request": {
+              "method": "POST",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "url": {
+                "raw": "{{baseUrl}}/api/v1/auth/register",
+                "host": [
+                  "{{baseUrl}}"
+                ],
+                "path": [
+                  "api",
+                  "v1",
+                  "auth",
+                  "register"
+                ]
+              },
+              "body": {
+                "mode": "raw",
+                "raw": "{\n  \"email\": \"not-an-email\",\n  \"password\": \"short\",\n  \"displayName\": \"\"\n}",
+                "options": {
+                  "raw": {
+                    "language": "json"
+                  }
+                }
+              },
+              "auth": {
+                "type": "noauth"
+              }
+            },
+            "response": [],
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                    "const errors = pm.response.json().errors;",
+                    "pm.test('reports each bad field', () => {",
+                    "  pm.expect(errors).to.have.property('email');",
+                    "  pm.expect(errors).to.have.property('password');",
+                    "  pm.expect(errors).to.have.property('displayName');",
+                    "});"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "Register (password > 72 chars) -> 400",
+            "request": {
+              "method": "POST",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "url": {
+                "raw": "{{baseUrl}}/api/v1/auth/register",
+                "host": [
+                  "{{baseUrl}}"
+                ],
+                "path": [
+                  "api",
+                  "v1",
+                  "auth",
+                  "register"
+                ]
+              },
+              "body": {
+                "mode": "raw",
+                "raw": "{\n  \"email\": \"long-pw-{{$timestamp}}@example.com\",\n  \"password\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\n  \"displayName\": \"Long Pw\"\n}",
+                "options": {
+                  "raw": {
+                    "language": "json"
+                  }
+                }
+              },
+              "auth": {
+                "type": "noauth"
+              },
+              "description": "BCrypt silently truncates past 72 bytes, so the API rejects longer passwords."
+            },
+            "response": [],
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                    "pm.test('flags password', () => pm.expect(pm.response.json().errors).to.have.property('password'));"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "Register (missing body) -> 400",
+            "request": {
+              "method": "POST",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "url": {
+                "raw": "{{baseUrl}}/api/v1/auth/register",
+                "host": [
+                  "{{baseUrl}}"
+                ],
+                "path": [
+                  "api",
+                  "v1",
+                  "auth",
+                  "register"
+                ]
+              },
+              "body": {
+                "mode": "raw",
+                "raw": "{}",
+                "options": {
+                  "raw": {
+                    "language": "json"
+                  }
+                }
+              },
+              "auth": {
+                "type": "noauth"
+              }
+            },
+            "response": [],
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test('400 Bad Request', () => pm.response.to.have.status(400));"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "Register (duplicate email) -> 409",
+            "request": {
+              "method": "POST",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "url": {
+                "raw": "{{baseUrl}}/api/v1/auth/register",
+                "host": [
+                  "{{baseUrl}}"
+                ],
+                "path": [
+                  "api",
+                  "v1",
+                  "auth",
+                  "register"
+                ]
+              },
+              "body": {
+                "mode": "raw",
+                "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\",\n  \"displayName\": \"Duplicate\"\n}",
+                "options": {
+                  "raw": {
+                    "language": "json"
+                  }
+                }
+              },
+              "auth": {
+                "type": "noauth"
+              },
+              "description": "Run after the Register request in folder 1, which creates {{testEmail}}."
+            },
+            "response": [],
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test('409 Conflict', () => pm.response.to.have.status(409));"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "Register (duplicate, different case) -> 409",
+            "request": {
+              "method": "POST",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "url": {
+                "raw": "{{baseUrl}}/api/v1/auth/register",
+                "host": [
+                  "{{baseUrl}}"
+                ],
+                "path": [
+                  "api",
+                  "v1",
+                  "auth",
+                  "register"
+                ]
+              },
+              "body": {
+                "mode": "raw",
+                "raw": "{\n  \"email\": \"{{upperEmail}}\",\n  \"password\": \"{{testPassword}}\",\n  \"displayName\": \"Duplicate\"\n}",
+                "options": {
+                  "raw": {
+                    "language": "json"
+                  }
+                }
+              },
+              "auth": {
+                "type": "noauth"
+              },
+              "description": "Emails are case-insensitive: the uppercased address must collide with the lowercase one."
+            },
+            "response": [],
+            "event": [
+              {
+                "listen": "prerequest",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.variables.set('upperEmail', pm.collectionVariables.get('testEmail').toUpperCase());"
+                  ]
+                }
+              },
+              {
+                "listen": "test",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test('409 Conflict', () => pm.response.to.have.status(409));"
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "4. Public endpoints",
+        "description": "Reachable without a token.",
+        "item": [
+          {
+            "name": "Health",
+            "request": {
+              "method": "GET",
+              "header": [],
+              "url": {
+                "raw": "{{baseUrl}}/actuator/health",
+                "host": [
+                  "{{baseUrl}}"
+                ],
+                "path": [
+                  "actuator",
+                  "health"
+                ]
+              },
+              "auth": {
+                "type": "noauth"
+              }
+            },
+            "response": [],
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                    "pm.test('status UP', () => pm.expect(pm.response.json().status).to.eql('UP'));"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "OpenAPI spec (JSON)",
+            "request": {
+              "method": "GET",
+              "header": [],
+              "url": {
+                "raw": "{{baseUrl}}/api/v1/docs",
+                "host": [
+                  "{{baseUrl}}"
+                ],
+                "path": [
+                  "api",
+                  "v1",
+                  "docs"
+                ]
+              },
+              "auth": {
+                "type": "noauth"
+              },
+              "description": "springdoc is configured to serve the spec at /api/v1/docs (not the default /v3/api-docs). Swagger UI is at /api/v1/docs/ui."
+            },
+            "response": [],
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                    "pm.test('is an OpenAPI doc', () => pm.expect(pm.response.json()).to.have.property('openapi'));"
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
